@@ -99,6 +99,8 @@ func CheckError(err error) {
 		fmt.Printf(err.Error())
 	}
 }
+
+//socket接受函数
 func handMsgAsync(con net.Conn) {
 	buffer := make([]byte, 4096000)
 	con.Write(SendLogOn())
@@ -108,18 +110,21 @@ func handMsgAsync(con net.Conn) {
 		readLength, err := con.Read(buffer)
 		CheckError(err)
 		var readBuf []byte = buffer[0:readLength]
+		//获取上次为解析的半包并装载到此次循环中解析
 		if len(unCompleteBytes) != 0 {
 			readBuf = BytesCopy(unCompleteBytes, readBuf)
 		}
 		startTime := time.Now()
-		msgList := readAMessage(&readBuf)
-		translateMsgAsync(&msgList)
+		msgList := readAMessage(&readBuf) //拆包分解，并把半包数据留在下次循环处理
+		go translateMsgAsync(&msgList)    //同步没有问题 异步就会出现数组数据解析出现乱码
 		endTime := time.Since(startTime)
 		fmt.Println("数据处理时间: ", endTime)
 		RecLength += int64(len(msgList))
 		unCompleteBytes = readBuf
 	}
 }
+
+//返回发送登陆的数据
 func SendLogOn() []byte {
 	var logon LogOnModel
 	var logonBytes MsgModel
@@ -151,23 +156,30 @@ func SendLogOn() []byte {
 		logonBytes.MsgCheckSum)
 	return outputbytes
 }
+
+//拆包，半包留着下次解析
 func readAMessage(input *[]byte) []BaseMsgModel {
 	var output []BaseMsgModel
 	for {
 		byteArray := *input
+		//头+长度+校验 最小12个字节，不足跳出
 		if len(byteArray) < 12 {
 			break
 		}
 		mt := BytesToInt32(byteArray[0:4])
+		//获取数据头
 		if Contain(mt, MsgTypes) {
 			ml := BytesToInt32(byteArray[4:8])
+			//数据长度
 			if ml >= 0 && ml < 5000 {
 				if len(byteArray) < 12+int(ml) {
 					break
 				}
+				//获取报文content
 				mc := byteArray[8 : 12+int(ml)]
 				sum := BytesToInt32(mc[len(mc)-4 : len(mc)])
 				checksum := CheckSum(byteArray[0 : 8+int(ml)])
+				//检查校验
 				if checksum == sum {
 					var model BaseMsgModel
 					model.MsgType = mt
@@ -179,14 +191,18 @@ func readAMessage(input *[]byte) []BaseMsgModel {
 					*input = byteArray[12+int(ml):]
 				}
 			} else {
+				//错误长度移除
 				*input = byteArray[8:]
 			}
 		} else {
+			//错误头部移除
 			*input = byteArray[4:]
 		}
 	}
 	return output
 }
+
+//发送心跳包
 func sendHeartBt(con net.Conn) {
 	var model MsgModel
 	model.MsgHead = BytesCopy(Int32ToBytes(3), Int32ToBytes(0))
@@ -199,6 +215,8 @@ func sendHeartBt(con net.Conn) {
 		time.Sleep(3 * time.Second)
 	}
 }
+
+//分发数据
 func translateMsgAsync(list *[]BaseMsgModel) {
 	modelList := *list
 	msg300111Count := 0
@@ -206,7 +224,7 @@ func translateMsgAsync(list *[]BaseMsgModel) {
 		index := i
 		switch modelList[i].MsgType {
 		case 300111:
-			Save300111(&modelList[index])
+			go Save300111(&modelList[index])
 			msg300111Count++
 			break
 		default:
@@ -216,6 +234,8 @@ func translateMsgAsync(list *[]BaseMsgModel) {
 
 	fmt.Println("300111数据量: ", msg300111Count)
 }
+
+//解析300111号报文
 func Save300111(input *BaseMsgModel) {
 	//model := input
 	bytes := input.MsgContent
@@ -225,7 +245,6 @@ func Save300111(input *BaseMsgModel) {
 
 	//0-8
 	hqModel.RecTime = GetTimeFromFormatIntByte(bytes[0:8])
-
 	hqModel.DataTime = hqModel.RecTime.Format("1504")
 	hqModel.RecTimeStr = hqModel.RecTime.Format("200601021504")
 	m1, _ := time.ParseDuration("-1m")
@@ -370,6 +389,8 @@ func Save300111(input *BaseMsgModel) {
 	//fmt.Println(jsstr)
 	zxRedisInsert(hqModel.SyNo, jsstr)
 }
+
+//redis存储
 func zxRedisInsert(key string, val string) {
 	redisLock.Lock()
 	redisConn.fsRedis.Do("SET", key, val)
