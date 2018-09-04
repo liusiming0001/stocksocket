@@ -3,7 +3,7 @@
 /*
 StockSocket document
 */
-package main
+package lib
 
 import (
 	"bytes"
