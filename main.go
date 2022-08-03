@@ -86,8 +86,7 @@ func main() {
 	//cache.MsgRedisListRemove(msgTempKey, msgTempDb)
 
 	//创建socket连接
-	_client, err := net.Dial("tcp", "47.93.162.170:6666")
-	//_client, err := net.Dial("tcp", "127.0.0.1:6666")
+	_client, err := net.Dial("tcp", "127.0.0.1:6666")
 	CheckError(err, _client)
 	defer _client.Close()
 
