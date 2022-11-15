@@ -118,7 +118,7 @@ func CheckError(err error, con net.Conn) {
 		fmt.Println(err.Error())
 		fmt.Println("Socket连接错误，正在重连")
 		con.Close()
-		con, err = net.Dial("tcp", "47.93.162.170:6666")
+		con, err = net.Dial("tcp", "127.0.0.1:6666")
 		time.Sleep(time.Second)
 		CheckError(err, con)
 	}
